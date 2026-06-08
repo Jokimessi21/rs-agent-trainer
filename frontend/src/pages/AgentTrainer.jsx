@@ -214,7 +214,7 @@ function ProposalCard({
           {hasPrompt && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium">PROMPT</span>}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400">{new Date(proposal.created_at).toLocaleString()}</span>
+          <span className="text-xs text-gray-400">{new Date(proposal.created_at).toLocaleString('en-US', { timeZone: 'America/Chicago' })}</span>
           <span className="text-gray-400 text-xs">{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
