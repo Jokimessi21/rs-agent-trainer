@@ -88,6 +88,21 @@ export default function AgentTrainer({ token, onLogout }) {
     }
   }
 
+  const handleRejectAll = async () => {
+    if (!confirm(`Reject all ${filter === 'all' ? '' : filter} proposals?`)) return
+    const res = await apiFetch('/api/agent-trainer/proposals/reject-all', {
+      method: 'POST',
+      body: JSON.stringify({ status: filter }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      await fetchProposals()
+      showToast(`Rejected ${data.rejected} proposals`)
+    } else {
+      showToast('Failed to reject all', 'error')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -100,6 +115,9 @@ export default function AgentTrainer({ token, onLogout }) {
           <div className="flex items-center gap-4">
             <button onClick={fetchProposals} className="text-sm text-blue-600 hover:text-blue-800 font-medium">
               Refresh
+            </button>
+            <button onClick={handleRejectAll} className="text-sm text-red-500 hover:text-red-700 font-medium">
+              Reject All
             </button>
             <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">
               Sign out
