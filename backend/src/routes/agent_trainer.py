@@ -73,7 +73,23 @@ def list_proposals():
         query = query.filter_by(status=status)
     return jsonify({'proposals': [p.to_dict() for p in query.all()]})
 
-
+@agent_trainer_bp.route('/agent-trainer/proposals/reject-all', methods=['POST'])
+@auth_required
+def reject_all_proposals():
+    data = request.get_json(force=True)
+    status_filter = data.get('status')  # 'all', 'pending', 'approved', etc.
+    
+    query = AgentProposal.query.filter(AgentProposal.status != 'applied')
+    if status_filter and status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+    
+    proposals = query.all()
+    for p in proposals:
+        p.status = 'rejected'
+        p.reviewed_at = datetime.utcnow()
+    
+    db.session.commit()
+    return jsonify({'rejected': len(proposals)})
 # ── Approve / reject + save edits ─────────────────────────────────────────────
 
 @agent_trainer_bp.route('/agent-trainer/proposals/<int:proposal_id>/review', methods=['POST'])
