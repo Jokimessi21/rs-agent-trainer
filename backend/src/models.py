@@ -53,3 +53,24 @@ class AgentProposal(db.Model):
 
     def __repr__(self):
         return f'<AgentProposal {self.id} {self.status}>'
+class OutboundCall(db.Model):
+    __tablename__ = 'outbound_calls'
+    id         = db.Column(db.Integer, primary_key=True)
+    phone      = db.Column(db.String(20), nullable=False, index=True)
+    company    = db.Column(db.String(200))
+    call_id    = db.Column(db.String(100))
+    outcome    = db.Column(db.String(50), default='initiated')
+    called_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id':        self.id,
+            'phone':     self.phone,
+            'company':   self.company,
+            'call_id':   self.call_id,
+            'outcome':   self.outcome,
+            'called_at': self.called_at.isoformat()
+        }
+
+    def __repr__(self):
+        return f'<OutboundCall {self.id} {self.phone}>'
