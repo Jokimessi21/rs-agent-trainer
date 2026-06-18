@@ -5,12 +5,12 @@ from datetime import datetime
 from functools import wraps
 
 from flask import Blueprint, jsonify, request
-from src.models import db, AgentProposal
+from src.models import db, AgentProposal, OutboundCall
 
 agent_trainer_bp = Blueprint('agent_trainer', __name__)
 
 ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY')
-DASHBOARD_SECRET   = os.environ.get('DASHBOARD_SECRET')  # simple token to protect the API
+DASHBOARD_SECRET   = os.environ.get('DASHBOARD_SECRET')
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -29,7 +29,6 @@ def auth_required(f):
 
 @agent_trainer_bp.route('/agent-trainer/webhook', methods=['POST'])
 def receive_proposal():
-    """Called by n8n after Claude has analyzed the transcript."""
     data = request.get_json(force=True)
 
     conversation_id = data.get('conversation_id')
@@ -73,23 +72,26 @@ def list_proposals():
         query = query.filter_by(status=status)
     return jsonify({'proposals': [p.to_dict() for p in query.all()]})
 
+
 @agent_trainer_bp.route('/agent-trainer/proposals/reject-all', methods=['POST'])
 @auth_required
 def reject_all_proposals():
     data = request.get_json(force=True)
-    status_filter = data.get('status')  # 'all', 'pending', 'approved', etc.
-    
+    status_filter = data.get('status')
+
     query = AgentProposal.query.filter(AgentProposal.status != 'applied')
     if status_filter and status_filter != 'all':
         query = query.filter_by(status=status_filter)
-    
+
     proposals = query.all()
     for p in proposals:
         p.status = 'rejected'
         p.reviewed_at = datetime.utcnow()
-    
+
     db.session.commit()
     return jsonify({'rejected': len(proposals)})
+
+
 # ── Approve / reject + save edits ─────────────────────────────────────────────
 
 @agent_trainer_bp.route('/agent-trainer/proposals/<int:proposal_id>/review', methods=['POST'])
@@ -150,6 +152,46 @@ def apply_proposal(proposal_id):
         proposal.error_message = str(e)
         db.session.commit()
         return jsonify({'error': str(e)}), 500
+
+
+# ── Outbound Call Tracking ────────────────────────────────────────────────────
+
+@agent_trainer_bp.route('/outbound/check-called', methods=['POST'])
+@auth_required
+def check_called():
+    data = request.get_json(force=True)
+    phone = data.get('phone')
+    reorder_days = int(data.get('avg_reorder_cycle_days', 90))
+
+    last_call = OutboundCall.query.filter_by(phone=phone).order_by(OutboundCall.called_at.desc()).first()
+
+    if not last_call:
+        return jsonify({'should_call': True, 'reason': 'never called'})
+
+    days_since_call = (datetime.utcnow() - last_call.called_at).days
+    should_call = days_since_call >= reorder_days
+
+    return jsonify({
+        'should_call': should_call,
+        'days_since_last_call': days_since_call,
+        'avg_reorder_cycle_days': reorder_days,
+        'reason': 'reorder cycle reached' if should_call else 'too soon to call again'
+    })
+
+
+@agent_trainer_bp.route('/outbound/mark-called', methods=['POST'])
+@auth_required
+def mark_called():
+    data = request.get_json(force=True)
+    call = OutboundCall(
+        phone   = data.get('phone'),
+        company = data.get('company'),
+        call_id = data.get('call_id'),
+        outcome = data.get('outcome', 'initiated')
+    )
+    db.session.add(call)
+    db.session.commit()
+    return jsonify({'success': True, 'id': call.id})
 
 
 # ── ElevenLabs helpers ────────────────────────────────────────────────────────
