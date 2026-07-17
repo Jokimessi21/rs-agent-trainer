@@ -201,6 +201,17 @@ def mark_called():
     db.session.add(call)
     db.session.commit()
     return jsonify({'success': True, 'id': call.id})
+    
+@agent_trainer_bp.route('/outbound/called-list', methods=['GET'])
+@auth_required
+def called_list():
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=60)
+    recent_calls = OutboundCall.query.filter(
+        OutboundCall.called_at >= cutoff
+    ).all()
+    phones = list(set([c.phone for c in recent_calls]))
+    return jsonify({'called_phones': phones})
 
 
 # ── ElevenLabs helpers ────────────────────────────────────────────────────────
