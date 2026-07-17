@@ -169,6 +169,15 @@ def check_called():
         return jsonify({'should_call': True, 'reason': 'never called'})
 
     days_since_call = (datetime.utcnow() - last_call.called_at).days
+    
+    if days_since_call < 60:
+        return jsonify({
+            'should_call': False,
+            'days_since_last_call': days_since_call,
+            'avg_reorder_cycle_days': reorder_days,
+            'reason': 'minimum 60 day cooldown'
+        })
+    
     should_call = days_since_call >= reorder_days
 
     return jsonify({
