@@ -213,6 +213,13 @@ def called_list():
     phones = list(set([c.phone for c in recent_calls]))
     return jsonify({'called_phones': phones})
 
+@agent_trainer_bp.route('/outbound/clear-calls', methods=['DELETE'])
+@auth_required
+def clear_calls():
+    OutboundCall.query.delete()
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'All call records cleared'})
+
 
 # ── ElevenLabs helpers ────────────────────────────────────────────────────────
 
