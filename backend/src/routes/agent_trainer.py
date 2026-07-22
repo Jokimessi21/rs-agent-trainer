@@ -12,6 +12,11 @@ agent_trainer_bp = Blueprint('agent_trainer', __name__)
 ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY')
 DASHBOARD_SECRET   = os.environ.get('DASHBOARD_SECRET')
 
+AGENT_IDS = {
+    'restaurant_sales': 'agent_1601ks3j65hze7wv04bwrww3skaz',
+    'prospect':         'agent_1901ky3cxj1ffaetgn6dzj10685k',
+}
+
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -66,26 +71,32 @@ def receive_proposal():
 @agent_trainer_bp.route('/agent-trainer/proposals', methods=['GET'])
 @auth_required
 def list_proposals():
-    status = request.args.get('status')
-    query  = AgentProposal.query.order_by(AgentProposal.created_at.desc())
+    status   = request.args.get('status')
+    agent_id = request.args.get('agent_id')
+    query    = AgentProposal.query.order_by(AgentProposal.created_at.desc())
     if status:
         query = query.filter_by(status=status)
+    if agent_id:
+        query = query.filter_by(agent_id=agent_id)
     return jsonify({'proposals': [p.to_dict() for p in query.all()]})
 
 
 @agent_trainer_bp.route('/agent-trainer/proposals/reject-all', methods=['POST'])
 @auth_required
 def reject_all_proposals():
-    data = request.get_json(force=True)
+    data          = request.get_json(force=True)
     status_filter = data.get('status')
+    agent_id      = data.get('agent_id')
 
     query = AgentProposal.query.filter(AgentProposal.status != 'applied')
     if status_filter and status_filter != 'all':
         query = query.filter_by(status=status_filter)
+    if agent_id:
+        query = query.filter_by(agent_id=agent_id)
 
     proposals = query.all()
     for p in proposals:
-        p.status = 'rejected'
+        p.status      = 'rejected'
         p.reviewed_at = datetime.utcnow()
 
     db.session.commit()
@@ -159,8 +170,8 @@ def apply_proposal(proposal_id):
 @agent_trainer_bp.route('/outbound/check-called', methods=['POST'])
 @auth_required
 def check_called():
-    data = request.get_json(force=True)
-    phone = data.get('phone')
+    data         = request.get_json(force=True)
+    phone        = data.get('phone')
     reorder_days = int(data.get('avg_reorder_cycle_days', 90))
 
     last_call = OutboundCall.query.filter_by(phone=phone).order_by(OutboundCall.called_at.desc()).first()
@@ -169,7 +180,7 @@ def check_called():
         return jsonify({'should_call': True, 'reason': 'never called'})
 
     days_since_call = (datetime.utcnow() - last_call.called_at).days
-    
+
     if days_since_call < 60:
         return jsonify({
             'should_call': False,
@@ -177,7 +188,7 @@ def check_called():
             'avg_reorder_cycle_days': reorder_days,
             'reason': 'minimum 60 day cooldown'
         })
-    
+
     should_call = days_since_call >= reorder_days
 
     return jsonify({
@@ -201,17 +212,17 @@ def mark_called():
     db.session.add(call)
     db.session.commit()
     return jsonify({'success': True, 'id': call.id})
-    
+
+
 @agent_trainer_bp.route('/outbound/called-list', methods=['GET'])
 @auth_required
 def called_list():
     from datetime import timedelta
-    cutoff = datetime.utcnow() - timedelta(days=60)
-    recent_calls = OutboundCall.query.filter(
-        OutboundCall.called_at >= cutoff
-    ).all()
-    phones = list(set([c.phone for c in recent_calls]))
+    cutoff       = datetime.utcnow() - timedelta(days=60)
+    recent_calls = OutboundCall.query.filter(OutboundCall.called_at >= cutoff).all()
+    phones       = list(set([c.phone for c in recent_calls]))
     return jsonify({'called_phones': phones})
+
 
 @agent_trainer_bp.route('/outbound/clear-calls', methods=['DELETE'])
 @auth_required
