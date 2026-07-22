@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
+const AGENTS = [
+  { id: 'all',                                    label: 'All Agents' },
+  { id: 'agent_1601ks3j65hze7wv04bwrww3skaz',    label: 'Restaurant Sales' },
+  { id: 'agent_1901ky3cxj1ffaetgn6dzj10685k',    label: 'Prospects' },
+]
+
 const STATUS_COLORS = {
   pending:  'bg-yellow-100 text-yellow-800',
   approved: 'bg-blue-100 text-blue-800',
@@ -19,6 +25,7 @@ const CONFIDENCE_COLORS = {
 export default function AgentTrainer({ token, onLogout }) {
   const [proposals, setProposals]       = useState([])
   const [filter, setFilter]             = useState('all')
+  const [agentFilter, setAgentFilter]   = useState('all')
   const [loading, setLoading]           = useState(true)
   const [expandedId, setExpandedId]     = useState(null)
   const [editedKB, setEditedKB]         = useState({})
@@ -44,7 +51,9 @@ export default function AgentTrainer({ token, onLogout }) {
   const fetchProposals = useCallback(async () => {
     setLoading(true)
     try {
-      const res  = await apiFetch('/api/agent-trainer/proposals')
+      const params = new URLSearchParams()
+      if (agentFilter !== 'all') params.set('agent_id', agentFilter)
+      const res  = await apiFetch(`/api/agent-trainer/proposals?${params}`)
       const data = await res.json()
       setProposals(data.proposals || [])
     } catch {
@@ -52,7 +61,7 @@ export default function AgentTrainer({ token, onLogout }) {
     } finally {
       setLoading(false)
     }
-  }, [apiFetch])
+  }, [apiFetch, agentFilter])
 
   useEffect(() => { fetchProposals() }, [fetchProposals])
 
@@ -92,7 +101,10 @@ export default function AgentTrainer({ token, onLogout }) {
     if (!confirm(`Reject all ${filter === 'all' ? '' : filter} proposals?`)) return
     const res = await apiFetch('/api/agent-trainer/proposals/reject-all', {
       method: 'POST',
-      body: JSON.stringify({ status: filter }),
+      body: JSON.stringify({ 
+        status: filter,
+        agent_id: agentFilter !== 'all' ? agentFilter : undefined
+      }),
     })
     const data = await res.json()
     if (res.ok) {
@@ -103,6 +115,8 @@ export default function AgentTrainer({ token, onLogout }) {
     }
   }
 
+  const agentLabel = AGENTS.find(a => a.id === agentFilter)?.label || 'All Agents'
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -110,7 +124,7 @@ export default function AgentTrainer({ token, onLogout }) {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Agent Trainer</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Review AI-suggested improvements to your ElevenLabs agent</p>
+            <p className="text-sm text-gray-500 mt-0.5">Review AI-suggested improvements to your ElevenLabs agents</p>
           </div>
           <div className="flex items-center gap-4">
             <button onClick={fetchProposals} className="text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -126,14 +140,38 @@ export default function AgentTrainer({ token, onLogout }) {
         </div>
       </div>
 
-      {/* Filter tabs */}
+      {/* Agent tabs */}
       <div className="bg-white border-b border-gray-200 px-6">
+        <div className="max-w-4xl mx-auto flex gap-1">
+          {AGENTS.map(a => (
+            <button
+              key={a.id}
+              onClick={() => setAgentFilter(a.id)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                agentFilter === a.id
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {a.label}
+              {a.id !== 'all' && (
+                <span className="ml-1.5 text-xs text-gray-400">
+                  ({proposals.filter(p => p.agent_id === a.id).length})
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Status filter tabs */}
+      <div className="bg-white border-b border-gray-100 px-6">
         <div className="max-w-4xl mx-auto flex gap-1">
           {['all', 'pending', 'approved', 'applied', 'rejected'].map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors capitalize ${
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize ${
                 filter === f
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -197,6 +235,12 @@ function ProposalCard({
   const hasPrompt = !!proposal.prompt_changes
   const isLocked  = proposal.status === 'applied' || proposal.status === 'rejected'
 
+  const agentName = proposal.agent_id === 'agent_1601ks3j65hze7wv04bwrww3skaz'
+    ? 'Restaurant Sales'
+    : proposal.agent_id === 'agent_1901ky3cxj1ffaetgn6dzj10685k'
+    ? 'Prospects'
+    : proposal.agent_id?.slice(0, 12) + '…'
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div
@@ -207,11 +251,14 @@ function ProposalCard({
           <span className={`text-xs font-medium px-2 py-1 rounded-full ${STATUS_COLORS[proposal.status]}`}>
             {proposal.status}
           </span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium">
+            {agentName}
+          </span>
           <span className="text-sm text-gray-500 font-mono text-xs">
             {proposal.conversation_id?.slice(0, 20)}…
           </span>
           {hasKB     && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">KB</span>}
-          {hasPrompt && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-medium">PROMPT</span>}
+          {hasPrompt && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-medium">PROMPT</span>}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400">{new Date(proposal.created_at).toLocaleString('en-US', { timeZone: 'America/Chicago' })}</span>
@@ -270,7 +317,7 @@ function ProposalCard({
                 onChange={e => onEditPrompt(e.target.value)}
                 disabled={isLocked}
                 rows={3}
-                className="w-full text-sm font-mono bg-gray-50 border border-blue-200 rounded-lg p-3 focus:outline-none focus:border-blue-400 resize-y disabled:opacity-50 disabled:cursor-default"
+                className="w-full text-sm font-mono bg-gray-50 border border-orange-200 rounded-lg p-3 focus:outline-none focus:border-orange-400 resize-y disabled:opacity-50 disabled:cursor-default"
               />
             </div>
           )}
